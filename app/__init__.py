@@ -35,6 +35,14 @@ def create_app() -> "Flask":  # noqa: F821
     app.register_blueprint(transactions_bp, url_prefix="/api/transactions")
 
     # ── Health check ──────────────────────────────────────────────────────────
+    @app.get("/")
+    def index():
+        return {
+            "message": "FinTrack API is successfully deployed and running!",
+            "status": "success",
+            "env": settings.FLASK_ENV
+        }
+
     @app.get("/api/health")
     def health():
         return {"status": "ok", "env": settings.FLASK_ENV}
