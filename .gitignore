@@ -1,0 +1,71 @@
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+.installed.cfg
+lib/
+lib64/
+MANIFEST
+
+# ─── Virtual environments ─────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.env.local
+.env.production
+
+# ─── Environment / Secrets ───────────────────────────────────────────────────
+.env
+!.env.example
+
+# ─── Database ─────────────────────────────────────────────────────────────────
+*.db
+*.sqlite3
+
+# ─── Alembic ─────────────────────────────────────────────────────────────────
+# Keep versions folder but ignore compiled cache
+migrations/__pycache__/
+migrations/versions/__pycache__/
+
+# ─── IDE / Editor ─────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ─── Testing ──────────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.coveragerc
+nosetests.xml
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Uploads / Receipts (if stored locally) ──────────────────────────────────
+uploads/
+media/
+
+# ─── Gunicorn ─────────────────────────────────────────────────────────────────
+gunicorn.pid
