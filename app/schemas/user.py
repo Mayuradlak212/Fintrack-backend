@@ -30,6 +30,7 @@ class UserUpdateRequest(BaseModel):
     email: EmailStr | None = None
     avatar_base64: str | None = None
     avatar_mime_type: str | None = None
+    phone: str | None = None
 
 
 # ── Response schemas ───────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ class UserResponse(BaseModel):
     name: str
     avatar_base64: str | None = None
     avatar_mime_type: str | None = None
+    phone: str | None = None
     created_at: datetime
     updated_at: datetime
 

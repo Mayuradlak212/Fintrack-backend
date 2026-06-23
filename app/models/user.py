@@ -31,6 +31,7 @@ class User(db.Model):
     )
     avatar_base64: Mapped[str | None] = mapped_column(String, nullable=True)
     avatar_mime_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # Relationship back-reference (lazy loaded)
     transactions: Mapped[list["Transaction"]] = db.relationship(  # type: ignore[name-defined]
