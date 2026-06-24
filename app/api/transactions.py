@@ -6,6 +6,8 @@ from pydantic import ValidationError
 
 from app.schemas.transaction import TransactionCreate, TransactionUpdate, TransactionResponse
 from app.services.transaction_service import TransactionService
+from app.services.auth_service import AuthService
+from app.services.email_service import EmailService
 
 transactions_bp = Blueprint("transactions", __name__)
 
@@ -49,6 +51,12 @@ def create_transaction():
         return _validation_error(e)
 
     tx = TransactionService.create(user_id, body)
+
+    if tx.amount >= 10000:
+        user = AuthService.get_by_id(user_id)
+        if user and user.email:
+            EmailService.send_large_transaction_alert(user, tx)
+
     return jsonify(TransactionResponse.model_validate(tx).model_dump()), 201
 
 

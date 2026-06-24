@@ -1,8 +1,30 @@
 from __future__ import annotations
 
+import os
+import base64
+from pathlib import Path
+
 from app.core.database import db
 from app.models.transaction import Transaction, Category, TransactionType
 from app.schemas.transaction import TransactionCreate, TransactionUpdate, TransactionListResponse, TransactionResponse
+
+def _save_receipt_locally(tx_id: str, b64_data: str | None):
+    if not b64_data:
+        return
+    try:
+        header, encoded = b64_data.split(",", 1) if "," in b64_data else ("", b64_data)
+        ext = ".jpg"
+        if "png" in header.lower(): ext = ".png"
+        elif "pdf" in header.lower(): ext = ".pdf"
+        
+        upload_dir = Path("uploads/receipts")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        file_path = upload_dir / f"{tx_id}{ext}"
+        
+        with open(file_path, "wb") as f:
+            f.write(base64.b64decode(encoded))
+    except Exception as e:
+        print(f"Failed to save local receipt for {tx_id}: {e}")
 
 
 class TransactionService:
@@ -24,6 +46,10 @@ class TransactionService:
         db.session.add(tx)
         db.session.commit()
         db.session.refresh(tx)
+        
+        if tx.receipt_base64:
+            _save_receipt_locally(tx.id, tx.receipt_base64)
+            
         return tx
 
     @staticmethod
@@ -34,7 +60,7 @@ class TransactionService:
         tx_type: str | None = None,
         category: str | None = None,
     ) -> TransactionListResponse:
-        query = Transaction.query.filter_by(user_id=user_id)
+        query = Transaction.query.filter_by(user_id=user_id, is_active=True)
 
         if tx_type:
             query = query.filter(Transaction.type == TransactionType(tx_type))
@@ -54,7 +80,7 @@ class TransactionService:
 
     @staticmethod
     def get(user_id: str, tx_id: str) -> Transaction | None:
-        return Transaction.query.filter_by(id=tx_id, user_id=user_id).first()
+        return Transaction.query.filter_by(id=tx_id, user_id=user_id, is_active=True).first()
 
     @staticmethod
     def update(user_id: str, tx_id: str, data: TransactionUpdate) -> Transaction:
@@ -74,6 +100,10 @@ class TransactionService:
 
         db.session.commit()
         db.session.refresh(tx)
+        
+        if "receipt_base64" in patch:
+            _save_receipt_locally(tx.id, tx.receipt_base64)
+            
         return tx
 
     @staticmethod
@@ -81,13 +111,13 @@ class TransactionService:
         tx = TransactionService.get(user_id, tx_id)
         if not tx:
             raise LookupError(f"Transaction '{tx_id}' not found.")
-        db.session.delete(tx)
+        tx.is_active = False
         db.session.commit()
 
     @staticmethod
     def summary(user_id: str) -> dict:
         """Returns total credit, debit, balance and counts."""
-        txs = Transaction.query.filter_by(user_id=user_id).all()
+        txs = Transaction.query.filter_by(user_id=user_id, is_active=True).all()
         total_credit = sum(float(t.amount) for t in txs if t.type == TransactionType.credit)
         total_debit  = sum(float(t.amount) for t in txs if t.type == TransactionType.debit)
         return {

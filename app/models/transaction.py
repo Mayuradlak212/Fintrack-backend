@@ -67,6 +67,9 @@ class Transaction(db.Model):
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+    
+    # Soft delete
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False, server_default="true")
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="transactions")  # type: ignore[name-defined]
