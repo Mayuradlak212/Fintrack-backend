@@ -131,9 +131,34 @@ class TransactionService:
         db.session.commit()
 
     @staticmethod
-    def summary(user_id: str) -> dict:
-        """Returns total credit, debit, balance and counts."""
-        txs = Transaction.query.filter_by(user_id=user_id, is_active=True).all()
+    def summary(
+        user_id: str,
+        tx_type: str | None = None,
+        category: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+    ) -> dict:
+        """Returns total credit, debit, balance and counts filtered by optional query params."""
+        query = Transaction.query.filter_by(user_id=user_id, is_active=True)
+
+        if tx_type:
+            query = query.filter(Transaction.type == TransactionType(tx_type))
+        if category:
+            query = query.filter(Transaction.category == Category(category))
+        if date_from:
+            try:
+                dt_from = datetime.fromisoformat(date_from)
+                query = query.filter(Transaction.date >= dt_from)
+            except ValueError:
+                pass
+        if date_to:
+            try:
+                dt_to = datetime.fromisoformat(date_to).replace(hour=23, minute=59, second=59)
+                query = query.filter(Transaction.date <= dt_to)
+            except ValueError:
+                pass
+
+        txs = query.all()
         total_credit = sum(float(t.amount) for t in txs if t.type == TransactionType.credit)
         total_debit  = sum(float(t.amount) for t in txs if t.type == TransactionType.debit)
         return {

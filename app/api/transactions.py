@@ -111,6 +111,18 @@ def delete_transaction(tx_id: str):
 @transactions_bp.get("/summary")
 @jwt_required()
 def summary():
-    """GET /api/transactions/summary — balance, totals, counts"""
-    user_id = get_jwt_identity()
-    return jsonify(TransactionService.summary(user_id)), 200
+    """GET /api/transactions/summary — balance, totals, counts with optional filters"""
+    user_id   = get_jwt_identity()
+    tx_type   = request.args.get("type")
+    category  = request.args.get("category")
+    date_from = request.args.get("date_from")
+    date_to   = request.args.get("date_to")
+
+    stats = TransactionService.summary(
+        user_id=user_id,
+        tx_type=tx_type,
+        category=category,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return jsonify(stats), 200
