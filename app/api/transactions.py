@@ -21,13 +21,15 @@ def _validation_error(exc: ValidationError):
 def list_transactions():
     """
     GET /api/transactions
-    Query params: page, per_page, type (credit|debit), category
+    Query params: page, per_page, type (credit|debit), category, date_from, date_to
     """
-    user_id = get_jwt_identity()
-    page     = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 20, type=int)
-    tx_type  = request.args.get("type")
-    category = request.args.get("category")
+    user_id   = get_jwt_identity()
+    page      = request.args.get("page", 1, type=int)
+    per_page  = request.args.get("per_page", 20, type=int)
+    tx_type   = request.args.get("type")
+    category  = request.args.get("category")
+    date_from = request.args.get("date_from")  # ISO date string e.g. "2024-01-01"
+    date_to   = request.args.get("date_to")    # ISO date string e.g. "2024-12-31"
 
     result = TransactionService.list_for_user(
         user_id=user_id,
@@ -35,6 +37,8 @@ def list_transactions():
         per_page=per_page,
         tx_type=tx_type,
         category=category,
+        date_from=date_from,
+        date_to=date_to,
     )
     return jsonify(result.model_dump()), 200
 

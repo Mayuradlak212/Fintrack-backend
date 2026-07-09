@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = "no-reply@financetracker.com"
 
+    # ── App URL (used in password-reset links) ────────────────────────────────
+    FRONTEND_URL: str = "http://localhost:3000"
+
+    # ── Password Reset ────────────────────────────────────────────────────────
+    PASSWORD_RESET_TOKEN_EXPIRES_MINUTES: int = 30
+
     @field_validator("DATABASE_URL")
     @classmethod
     def validate_db_url(cls, v: str) -> str:

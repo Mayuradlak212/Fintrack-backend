@@ -33,6 +33,10 @@ class User(db.Model):
     avatar_mime_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
+    # Password-reset one-time token (URL-safe, expires)
+    password_reset_token: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    password_reset_expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Relationship back-reference (lazy loaded)
     transactions: Mapped[list["Transaction"]] = db.relationship(  # type: ignore[name-defined]
         "Transaction", back_populates="user", cascade="all, delete-orphan"

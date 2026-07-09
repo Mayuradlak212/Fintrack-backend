@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import base64
+from datetime import datetime
 from pathlib import Path
 
 from app.core.database import db
@@ -59,6 +60,8 @@ class TransactionService:
         per_page: int = 20,
         tx_type: str | None = None,
         category: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
     ) -> TransactionListResponse:
         query = Transaction.query.filter_by(user_id=user_id, is_active=True)
 
@@ -66,6 +69,19 @@ class TransactionService:
             query = query.filter(Transaction.type == TransactionType(tx_type))
         if category:
             query = query.filter(Transaction.category == Category(category))
+        if date_from:
+            try:
+                dt_from = datetime.fromisoformat(date_from)
+                query = query.filter(Transaction.date >= dt_from)
+            except ValueError:
+                pass  # ignore malformed date
+        if date_to:
+            try:
+                # Include the full end day by going to end-of-day
+                dt_to = datetime.fromisoformat(date_to).replace(hour=23, minute=59, second=59)
+                query = query.filter(Transaction.date <= dt_to)
+            except ValueError:
+                pass  # ignore malformed date
 
         query = query.order_by(Transaction.date.desc())
         paginated = query.paginate(page=page, per_page=per_page, error_out=False)

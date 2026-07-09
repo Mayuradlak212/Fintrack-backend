@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import hashlib
+import secrets
+from datetime import datetime, timedelta, timezone
+
 from app.core.database import db
 from app.core.security import hash_password, verify_password, create_tokens
 from app.models.user import User
 from app.schemas.user import RegisterRequest, LoginRequest
+from app.core.config import settings
 
 
 class AuthService:
@@ -48,6 +53,10 @@ class AuthService:
         return db.session.get(User, user_id)
 
     @staticmethod
+    def get_by_id_email(email: str) -> User | None:
+        return User.query.filter_by(email=email.strip().lower()).first()
+
+    @staticmethod
     def update_user(user_id: str, data: dict) -> User:
         user = db.session.get(User, user_id)
         if not user:
@@ -59,3 +68,48 @@ class AuthService:
         
         db.session.commit()
         return user
+
+    # ── Password Reset ────────────────────────────────────────────────────────
+
+    @staticmethod
+    def forgot_password(email: str) -> str | None:
+        """
+        Generate a password-reset token for the given email.
+        Returns the raw token (to be embedded in the reset URL).
+        Returns None silently if email not found (prevents user enumeration).
+        """
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return None
+
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+
+        user.password_reset_token = token_hash
+        user.password_reset_expires = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES
+        )
+        db.session.commit()
+        return raw_token
+
+    @staticmethod
+    def reset_password(token: str, new_password: str) -> bool:
+        """
+        Validate the reset token and update the user's password.
+        Returns True on success, False on invalid/expired token.
+        """
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        user = User.query.filter_by(password_reset_token=token_hash).first()
+
+        if not user:
+            return False
+        if not user.password_reset_expires:
+            return False
+        if datetime.now(timezone.utc) > user.password_reset_expires.replace(tzinfo=timezone.utc):
+            return False
+
+        user.password_hash = hash_password(new_password)
+        user.password_reset_token = None
+        user.password_reset_expires = None
+        db.session.commit()
+        return True

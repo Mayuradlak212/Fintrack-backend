@@ -316,3 +316,73 @@ class EmailService:
 
         subject = f"Alert: Large {verb} of {amount_str}"
         send_email_async(user.email, subject, html_content)
+
+    @staticmethod
+    def send_password_reset_email(to_email: str, user_name: str, reset_url: str, expires_minutes: int = 30):
+        """Send a password-reset link email."""
+
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:24px 12px;background-color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#f8fafc;">
+
+    <div style="max-width:560px;margin:0 auto;border-radius:20px;overflow:hidden;">
+
+        <!-- Header -->
+        <div style="background:linear-gradient(135deg,#7c3aed 0%,#a78bfa 100%);padding:36px 24px 28px;text-align:center;">
+            <div style="display:inline-block;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:100px;padding:5px 14px;font-size:12px;color:rgba(255,255,255,0.95);font-weight:600;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:16px;">
+                &#128274;&nbsp; Security
+            </div>
+            <h1 style="margin:0 0 8px;color:#ffffff;font-size:24px;font-weight:800;letter-spacing:-0.03em;">Reset Your Password</h1>
+            <p style="margin:0;color:rgba(255,255,255,0.8);font-size:13px;">We received a request to reset your FinTrack password.</p>
+        </div>
+
+        <!-- Body -->
+        <div style="background-color:#1e293b;padding:32px 24px;">
+
+            <p style="font-size:15px;color:#cbd5e1;margin:0 0 6px;">Hi {user_name},</p>
+            <p style="font-size:13px;color:#64748b;margin:0 0 28px;line-height:1.7;">
+                Click the button below to set a new password for your account. This link is valid for
+                <strong style="color:#a78bfa;">{expires_minutes} minutes</strong> and can only be used once.
+            </p>
+
+            <!-- CTA Button -->
+            <div style="text-align:center;margin-bottom:28px;">
+                <a href="{reset_url}"
+                   style="display:inline-block;background:linear-gradient(135deg,#7c3aed 0%,#a78bfa 100%);color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;padding:14px 36px;border-radius:12px;letter-spacing:0.01em;box-shadow:0 4px 20px rgba(124,58,237,0.45);">
+                    &#128273;&nbsp; Reset Password
+                </a>
+            </div>
+
+            <!-- Fallback URL -->
+            <div style="border-radius:10px;background:#0f172a;border:1px solid rgba(255,255,255,0.05);padding:14px 16px;margin-bottom:20px;">
+                <p style="font-size:11px;color:#475569;margin:0 0 6px;">Or copy and paste this link into your browser:</p>
+                <p style="font-size:11px;color:#a78bfa;margin:0;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">{reset_url}</p>
+            </div>
+
+            <!-- Security Note -->
+            <div style="border-radius:10px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);padding:14px 16px;">
+                <p style="font-size:12px;color:#94a3b8;line-height:1.7;margin:0;">
+                    <strong style="color:#fca5a5;font-weight:600;">&#9888;&#65039; Didn't request this?</strong><br>
+                    If you didn't ask to reset your password, you can safely ignore this email. Your account remains secure and your password has not been changed.
+                </p>
+            </div>
+
+        </div>
+
+        <!-- Footer -->
+        <div style="background-color:#0f172a;padding:20px 24px;text-align:center;border-top:1px solid rgba(255,255,255,0.04);">
+            <p style="font-size:13px;font-weight:700;color:#475569;letter-spacing:0.04em;margin:0 0 4px;">FINTRACK</p>
+            <p style="font-size:11px;color:#334155;margin:0 0 12px;">&#169; 2026 FinTrack. All rights reserved.</p>
+            <p style="font-size:11px;color:#334155;margin:0;">This link expires in {expires_minutes} minutes.</p>
+        </div>
+
+    </div>
+
+</body>
+</html>"""
+
+        send_email_async(to_email, "Reset your FinTrack password", html_content)

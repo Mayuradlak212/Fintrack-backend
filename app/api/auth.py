@@ -96,3 +96,57 @@ def update_me():
         return jsonify(UserResponse.model_validate(updated).model_dump()), 200
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+
+
+@auth_bp.post("/forgot-password")
+def forgot_password():
+    """
+    POST /api/auth/forgot-password
+    Body: { "email": "user@example.com" }
+    Always returns 200 to prevent email enumeration.
+    """
+    from app.services.email_service import EmailService
+
+    data = request.get_json(force=True) or {}
+    email = (data.get("email") or "").strip().lower()
+
+    if not email:
+        return jsonify({"message": "If that email is registered, a reset link has been sent."}), 200
+
+    raw_token = AuthService.forgot_password(email)
+    if raw_token:
+        user = AuthService.get_by_id_email(email)
+        reset_url = (
+            f"{settings.FRONTEND_URL}/auth/reset-password?token={raw_token}"
+        )
+        EmailService.send_password_reset_email(
+            to_email=email,
+            user_name=user.name if user else "there",
+            reset_url=reset_url,
+            expires_minutes=settings.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES,
+        )
+
+    return jsonify({"message": "If that email is registered, a reset link has been sent."}), 200
+
+
+@auth_bp.post("/reset-password")
+def reset_password():
+    """
+    POST /api/auth/reset-password
+    Body: { "token": "...", "password": "newpassword123" }
+    """
+    data = request.get_json(force=True) or {}
+    token    = (data.get("token") or "").strip()
+    password = (data.get("password") or "").strip()
+
+    if not token or not password:
+        return jsonify({"error": "Token and new password are required."}), 400
+
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters."}), 400
+
+    success = AuthService.reset_password(token, password)
+    if not success:
+        return jsonify({"error": "Invalid or expired reset link. Please request a new one."}), 400
+
+    return jsonify({"message": "Password updated successfully. You can now log in."}), 200
