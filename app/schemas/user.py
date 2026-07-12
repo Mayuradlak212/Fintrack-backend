@@ -30,7 +30,7 @@ class UserUpdateRequest(BaseModel):
     email: EmailStr | None = None
     avatar_base64: str | None = None
     avatar_mime_type: str | None = None
-    phone: str | None = None
+    phone: str | None = Field(default=None, pattern=r"^\d{10}$")
 
 
 # ── Response schemas ───────────────────────────────────────────────────────────
