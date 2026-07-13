@@ -8,8 +8,8 @@ services:
     env: docker
     region: singapore
     plan: free
-    dockerContext: ./backend
-    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
     envVars:
       # Connects to the Private Service over Render's internal private network
       - key: DATABASE_URL
