@@ -35,6 +35,15 @@ services:
       timeout: 5s
       retries: 5
 
+  db-ui:
+    image: adminer
+    ports:
+      - "8080:8080"
+    networks:
+      - finance_network
+    depends_on:
+      - db
+
 volumes:
   postgres_data:
 
