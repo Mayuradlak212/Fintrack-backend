@@ -1,33 +1,29 @@
-# Use an official lightweight Python image.
+# Use the official Python slim image for a smaller footprint
 FROM python:3.12-slim
 
-# Set environment variables
+# Prevent Python from writing .pyc files and enable unbuffered output
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV FLASK_APP=run:app
 
-# Set work directory
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libpq-dev \
+# Install system dependencies required for psycopg2 and other packages
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc libpq-dev \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install python dependencies
-COPY requirements.txt /app/
-RUN pip install --upgrade pip
+# Set the working directory
+WORKDIR /app
+
+# Copy the requirements file and install dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install gunicorn for production
-RUN pip install gunicorn
+# Copy the rest of the backend application code
+COPY . .
 
-# Copy project
-COPY . /app/
+# Expose port 10000 (Render default)
+EXPOSE 10000
 
-# Expose port
-EXPOSE 5000
-
-# Run the application with Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "run:app"]
+# Script to run migrations and start gunicorn
+# We use a shell command to ensure migrations run before the app starts
+CMD flask db upgrade && gunicorn run:app --bind 0.0.0.0:10000 --workers 2 --threads 4 --timeout 120
