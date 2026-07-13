@@ -27,7 +27,7 @@ services:
     # But Render Blueprint doesn't natively support "image:" for pserv unless it's in a Dockerfile.
     # Actually, Render supports "image: postgres:15-alpine" in blueprints now!
     image:
-      imagePath: postgres:15-alpine
+      url: postgres:15-alpine
     disk:
       name: pg-data
       mountPath: /var/lib/postgresql/data
