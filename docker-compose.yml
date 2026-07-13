@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "10000:10000"
+    environment:
+      - DATABASE_URL=postgresql://finance_user:localpassword@db:5432/finance_tracker
+      - JWT_SECRET_KEY=local_development_secret_key
+      - FLASK_ENV=development
+    networks:
+      - finance_network
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=finance_user
+      - POSTGRES_PASSWORD=localpassword
+      - POSTGRES_DB=finance_tracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - finance_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finance_user -d finance_tracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+
+networks:
+  finance_network:
+    driver: bridge

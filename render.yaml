@@ -1,0 +1,40 @@
+# render.yaml
+# Blueprint to deploy the entire stack to Render using a Private Docker Service
+
+services:
+  # 1. The Backend Flask Application
+  - type: web
+    name: finance-tracker-backend
+    env: docker
+    region: singapore
+    plan: free
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    envVars:
+      # Connects to the Private Service over Render's internal private network
+      - key: DATABASE_URL
+        value: postgresql://finance_user:production_password@finance-tracker-db:5432/finance_tracker
+      - key: JWT_SECRET_KEY
+        generateValue: true
+
+  # 2. PostgreSQL as a Private Docker Service
+  - type: pserv
+    name: finance-tracker-db
+    env: docker
+    region: singapore
+    plan: free
+    # We can deploy a public image directly in render.yaml by defining the image environment
+    # But Render Blueprint doesn't natively support "image:" for pserv unless it's in a Dockerfile.
+    # Actually, Render supports "image: postgres:15-alpine" in blueprints now!
+    image: postgres:15-alpine
+    disk:
+      name: pg-data
+      mountPath: /var/lib/postgresql/data
+      sizeGB: 1
+    envVars:
+      - key: POSTGRES_USER
+        value: finance_user
+      - key: POSTGRES_PASSWORD
+        value: production_password
+      - key: POSTGRES_DB
+        value: finance_tracker
