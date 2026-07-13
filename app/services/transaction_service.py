@@ -161,6 +161,41 @@ class TransactionService:
         txs = query.all()
         total_credit = sum(float(t.amount) for t in txs if t.type == TransactionType.credit)
         total_debit  = sum(float(t.amount) for t in txs if t.type == TransactionType.debit)
+
+        monthly_map = {}
+        category_map = {}
+        for t in txs:
+            # month format: "Jan 24" for compatibility with frontend formatIST
+            m = t.date.strftime("%b %y")
+            if m not in monthly_map:
+                monthly_map[m] = {"credit": 0.0, "debit": 0.0}
+            if t.type == TransactionType.credit:
+                monthly_map[m]["credit"] += float(t.amount)
+            else:
+                monthly_map[m]["debit"] += float(t.amount)
+                cat = t.category.value if t.category else "Other"
+                category_map[cat] = category_map.get(cat, 0.0) + float(t.amount)
+
+        # Ensure correct order of months by storing original datetime or just let frontend sort?
+        # Actually frontend expects them in order, so let's sort them. 
+        # But wait, date.strftime("%b %y") can't be easily sorted. Let's just output them as they are
+        # and sort by the minimum date in that month.
+        def _get_min_date(month_str):
+            # Find the earliest date matching this month string
+            return min([tx.date for tx in txs if tx.date.strftime("%b %y") == month_str])
+
+        monthly = []
+        for k, v in monthly_map.items():
+            monthly.append({"month": k, "credit": round(v["credit"], 2), "debit": round(v["debit"], 2), "sort_date": _get_min_date(k)})
+        
+        monthly.sort(key=lambda x: x["sort_date"])
+        for item in monthly:
+            del item["sort_date"]
+
+        categories = [{"category": k, "amount": round(v, 2)} for k, v in category_map.items()]
+        # sort categories by amount desc
+        categories.sort(key=lambda x: x["amount"], reverse=True)
+
         return {
             "total_credit": round(total_credit, 2),
             "total_debit": round(total_debit, 2),
@@ -168,4 +203,6 @@ class TransactionService:
             "count": len(txs),
             "credit_count": sum(1 for t in txs if t.type == TransactionType.credit),
             "debit_count":  sum(1 for t in txs if t.type == TransactionType.debit),
+            "monthly": monthly,
+            "categories": categories
         }
