@@ -20,7 +20,7 @@ services:
   # 2. PostgreSQL as a Private Docker Service
   - type: pserv
     name: finance-tracker-db
-    env: docker
+    env: image
     region: singapore
     plan: free
     # We can deploy a public image directly in render.yaml by defining the image environment
