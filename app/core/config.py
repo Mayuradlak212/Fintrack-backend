@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     # ── Password Reset ────────────────────────────────────────────────────────
     PASSWORD_RESET_TOKEN_EXPIRES_MINUTES: int = 30
 
+    # ── TOTP / Two-Factor Auth ────────────────────────────────────────────────
+    TOTP_ISSUER: str = "FinTrack"
+    # Window of the pending "password OK, code still needed" login challenge.
+    MFA_CHALLENGE_EXPIRES_MINUTES: int = 5
+    # Wrong codes allowed per challenge before it is burned. A 6-digit code has
+    # only 1M combinations, so an unthrottled endpoint is brute-forceable.
+    MFA_MAX_ATTEMPTS: int = 5
+    BACKUP_CODE_COUNT: int = 10
+
     @field_validator("DATABASE_URL")
     @classmethod
     def validate_db_url(cls, v: str) -> str:

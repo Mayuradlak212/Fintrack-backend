@@ -40,11 +40,29 @@ class AuthService:
         """
         Authenticates user credentials.
         Raises ValueError on bad email or password.
+
+        With 2FA enabled no session is issued here — returns
+        {"mfa_required": True, "mfa_token": ...} and the caller must complete
+        AuthService.verify_mfa() to receive tokens.
         """
         user = User.query.filter_by(email=data.email).first()
         if not user or not verify_password(data.password, user.password_hash):
             raise ValueError("Invalid email or password.")
 
+        if user.totp_enabled:
+            from app.services.totp_service import TotpService
+
+            return {"mfa_required": True, "mfa_token": TotpService.start_challenge(user)}
+
+        tokens = create_tokens(user.id)
+        return {"user": user, **tokens}
+
+    @staticmethod
+    def verify_mfa(mfa_token: str, code: str) -> dict:
+        """Second login step — exchange a valid code for a real session."""
+        from app.services.totp_service import TotpService
+
+        user = TotpService.verify_challenge(mfa_token, code)
         tokens = create_tokens(user.id)
         return {"user": user, **tokens}
 

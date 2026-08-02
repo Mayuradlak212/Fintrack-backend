@@ -42,6 +42,7 @@ class UserResponse(BaseModel):
     avatar_base64: str | None = None
     avatar_mime_type: str | None = None
     phone: str | None = None
+    totp_enabled: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -58,3 +59,36 @@ class TokenResponse(BaseModel):
 class RefreshResponse(BaseModel):
     access_token: str
     token_type: str = "Bearer"
+
+
+# ── TOTP two-factor auth ───────────────────────────────────────────────────────
+
+class TotpCodeRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=32)
+
+
+class TotpDisableRequest(BaseModel):
+    password: str = Field(min_length=1)
+
+
+class MfaVerifyRequest(BaseModel):
+    mfa_token: str = Field(min_length=1)
+    code: str = Field(min_length=6, max_length=32)
+
+
+class TotpSetupResponse(BaseModel):
+    secret: str
+    otpauth_uri: str
+    qr_base64: str
+
+
+class TotpActivateResponse(BaseModel):
+    message: str = "Two-factor authentication enabled."
+    backup_codes: list[str]
+
+
+class MfaRequiredResponse(BaseModel):
+    """Returned by /login when the password is correct but a code is still needed."""
+    mfa_required: bool = True
+    mfa_token: str
+    message: str = "Enter the code from your authenticator app."

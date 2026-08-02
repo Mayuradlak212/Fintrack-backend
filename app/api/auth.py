@@ -4,8 +4,21 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_token
 from pydantic import ValidationError
 
-from app.schemas.user import RegisterRequest, LoginRequest, TokenResponse, UserResponse, RefreshResponse
+from app.schemas.user import (
+    RegisterRequest,
+    LoginRequest,
+    TokenResponse,
+    UserResponse,
+    RefreshResponse,
+    TotpCodeRequest,
+    TotpDisableRequest,
+    TotpSetupResponse,
+    TotpActivateResponse,
+    MfaVerifyRequest,
+    MfaRequiredResponse,
+)
 from app.services.auth_service import AuthService
+from app.services.totp_service import TotpService
 from app.core.config import settings
 
 auth_bp = Blueprint("auth", __name__)
@@ -48,6 +61,10 @@ def login():
         result = AuthService.login(body)
     except ValueError as e:
         return jsonify({"error": str(e)}), 401
+
+    # 2FA is on — password verified, but no session until the code is supplied.
+    if result.get("mfa_required"):
+        return jsonify(MfaRequiredResponse(mfa_token=result["mfa_token"]).model_dump()), 200
 
     response = TokenResponse(
         access_token=result["access_token"],
@@ -119,6 +136,13 @@ def forgot_password():
         reset_url = (
             f"{settings.FRONTEND_URL}/auth/reset-password?token={raw_token}"
         )
+
+        # Dev convenience: surface the link in the console so password reset is
+        # testable without working SMTP. Never enable in production — the token
+        # in this URL is enough to take over the account.
+        if settings.FLASK_ENV == "development":
+            print(f"\n[PASSWORD RESET] {email}\n[PASSWORD RESET] {reset_url}\n", flush=True)
+
         EmailService.send_password_reset_email(
             to_email=email,
             user_name=user.name if user else "there",
@@ -150,3 +174,104 @@ def reset_password():
         return jsonify({"error": "Invalid or expired reset link. Please request a new one."}), 400
 
     return jsonify({"message": "Password updated successfully. You can now log in."}), 200
+
+
+# ── TOTP two-factor auth ──────────────────────────────────────────────────────
+
+
+@auth_bp.post("/login/verify")
+def login_verify():
+    """
+    POST /api/auth/login/verify
+    Body: { "mfa_token": "...", "code": "123456" }
+
+    Second step of login when 2FA is enabled. `code` accepts either a TOTP code
+    or one of the single-use backup codes.
+    """
+    try:
+        body = MfaVerifyRequest.model_validate(request.get_json(force=True))
+    except ValidationError as e:
+        return _validation_error(e)
+
+    try:
+        result = AuthService.verify_mfa(body.mfa_token, body.code)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 401
+
+    response = TokenResponse(
+        access_token=result["access_token"],
+        refresh_token=result["refresh_token"],
+        user=UserResponse.model_validate(result["user"]),
+    )
+    return jsonify(response.model_dump()), 200
+
+
+@auth_bp.post("/totp/setup")
+@jwt_required()
+def totp_setup():
+    """
+    POST /api/auth/totp/setup
+    Returns the QR code + manual key for the authenticator app.
+    2FA is not active until /totp/activate succeeds.
+    """
+    user = AuthService.get_by_id(get_jwt_identity())
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    try:
+        data = TotpService.begin_setup(user)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    return jsonify(TotpSetupResponse(**data).model_dump()), 200
+
+
+@auth_bp.post("/totp/activate")
+@jwt_required()
+def totp_activate():
+    """
+    POST /api/auth/totp/activate
+    Body: { "code": "123456" }
+    Confirms the app is working, enables 2FA, and returns the backup codes.
+    These are shown once and never retrievable again.
+    """
+    try:
+        body = TotpCodeRequest.model_validate(request.get_json(force=True))
+    except ValidationError as e:
+        return _validation_error(e)
+
+    user = AuthService.get_by_id(get_jwt_identity())
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    try:
+        backup_codes = TotpService.activate(user, body.code)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    return jsonify(TotpActivateResponse(backup_codes=backup_codes).model_dump()), 200
+
+
+@auth_bp.post("/totp/disable")
+@jwt_required()
+def totp_disable():
+    """
+    POST /api/auth/totp/disable
+    Body: { "password": "..." }
+    Password is required so a stolen session token alone cannot strip 2FA.
+    """
+    try:
+        body = TotpDisableRequest.model_validate(request.get_json(force=True))
+    except ValidationError as e:
+        return _validation_error(e)
+
+    user = AuthService.get_by_id(get_jwt_identity())
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    try:
+        TotpService.disable(user, body.password)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    return jsonify({"message": "Two-factor authentication disabled."}), 200
