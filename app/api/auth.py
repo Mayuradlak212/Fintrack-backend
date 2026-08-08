@@ -20,6 +20,7 @@ from app.schemas.user import (
 from app.services.auth_service import AuthService
 from app.services.totp_service import TotpService
 from app.core.config import settings
+from app.core.rate_limit import body_email, rate_limit
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -29,6 +30,7 @@ def _validation_error(exc: ValidationError):
 
 
 @auth_bp.post("/register")
+@rate_limit("auth:register")
 def register():
     """POST /api/auth/register"""
     try:
@@ -50,6 +52,8 @@ def register():
 
 
 @auth_bp.post("/login")
+@rate_limit("auth:login")
+@rate_limit("auth:login_account", discriminator=body_email)
 def login():
     """POST /api/auth/login"""
     try:
@@ -76,6 +80,7 @@ def login():
 
 @auth_bp.post("/refresh")
 @jwt_required(refresh=True)
+@rate_limit("auth:refresh")
 def refresh():
     """POST /api/auth/refresh — requires a valid refresh token."""
     user_id = get_jwt_identity()
@@ -88,6 +93,7 @@ def refresh():
 
 @auth_bp.get("/me")
 @jwt_required()
+@rate_limit("api:read")
 def me():
     """GET /api/auth/me — returns the current authenticated user."""
     user_id = get_jwt_identity()
@@ -98,6 +104,7 @@ def me():
 
 @auth_bp.patch("/me")
 @jwt_required()
+@rate_limit("api:write")
 def update_me():
     """PATCH /api/auth/me — update current user profile."""
     from app.schemas.user import UserUpdateRequest
@@ -116,6 +123,8 @@ def update_me():
 
 
 @auth_bp.post("/forgot-password")
+@rate_limit("auth:forgot_password")
+@rate_limit("auth:forgot_password_account", discriminator=body_email)
 def forgot_password():
     """
     POST /api/auth/forgot-password
@@ -154,6 +163,7 @@ def forgot_password():
 
 
 @auth_bp.post("/reset-password")
+@rate_limit("auth:reset_password")
 def reset_password():
     """
     POST /api/auth/reset-password
@@ -180,6 +190,7 @@ def reset_password():
 
 
 @auth_bp.post("/login/verify")
+@rate_limit("auth:mfa")
 def login_verify():
     """
     POST /api/auth/login/verify
@@ -208,6 +219,7 @@ def login_verify():
 
 @auth_bp.post("/totp/setup")
 @jwt_required()
+@rate_limit("auth:totp_manage")
 def totp_setup():
     """
     POST /api/auth/totp/setup
@@ -228,6 +240,7 @@ def totp_setup():
 
 @auth_bp.post("/totp/activate")
 @jwt_required()
+@rate_limit("auth:totp_manage")
 def totp_activate():
     """
     POST /api/auth/totp/activate
@@ -254,6 +267,7 @@ def totp_activate():
 
 @auth_bp.post("/totp/disable")
 @jwt_required()
+@rate_limit("auth:totp_manage")
 def totp_disable():
     """
     POST /api/auth/totp/disable

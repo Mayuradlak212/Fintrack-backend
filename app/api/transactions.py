@@ -8,6 +8,7 @@ from app.schemas.transaction import TransactionCreate, TransactionUpdate, Transa
 from app.services.transaction_service import TransactionService
 from app.services.auth_service import AuthService
 from app.services.email_service import EmailService
+from app.core.rate_limit import rate_limit
 
 transactions_bp = Blueprint("transactions", __name__)
 
@@ -18,6 +19,7 @@ def _validation_error(exc: ValidationError):
 
 @transactions_bp.get("")
 @jwt_required()
+@rate_limit("api:read")
 def list_transactions():
     """
     GET /api/transactions
@@ -45,6 +47,7 @@ def list_transactions():
 
 @transactions_bp.post("")
 @jwt_required()
+@rate_limit("api:write")
 def create_transaction():
     """POST /api/transactions"""
     user_id = get_jwt_identity()
@@ -66,6 +69,7 @@ def create_transaction():
 
 @transactions_bp.get("/<string:tx_id>")
 @jwt_required()
+@rate_limit("api:read")
 def get_transaction(tx_id: str):
     """GET /api/transactions/:id"""
     user_id = get_jwt_identity()
@@ -77,6 +81,7 @@ def get_transaction(tx_id: str):
 
 @transactions_bp.patch("/<string:tx_id>")
 @jwt_required()
+@rate_limit("api:write")
 def update_transaction(tx_id: str):
     """PATCH /api/transactions/:id — partial update"""
     user_id = get_jwt_identity()
@@ -96,6 +101,7 @@ def update_transaction(tx_id: str):
 
 @transactions_bp.delete("/<string:tx_id>")
 @jwt_required()
+@rate_limit("api:write")
 def delete_transaction(tx_id: str):
     """DELETE /api/transactions/:id"""
     user_id = get_jwt_identity()
@@ -110,6 +116,7 @@ def delete_transaction(tx_id: str):
 
 @transactions_bp.get("/summary")
 @jwt_required()
+@rate_limit("api:report")
 def summary():
     """GET /api/transactions/summary — balance, totals, counts with optional filters"""
     user_id   = get_jwt_identity()

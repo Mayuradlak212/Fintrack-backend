@@ -19,10 +19,26 @@ def create_app() -> "Flask":  # noqa: F821
     app.config["JWT_REFRESH_TOKEN_EXPIRES"] = settings.refresh_token_expires
 
     # ── Extensions ────────────────────────────────────────────────────────────
+    from app.core.rate_limit import limiter
+
     db.init_app(app)
     migrate.init_app(app, db)
     JWTManager(app)
-    CORS(app, origins=settings.cors_origins_list, supports_credentials=True)
+    limiter.init_app(app)
+    CORS(
+        app,
+        origins=settings.cors_origins_list,
+        supports_credentials=True,
+        # Cross-origin JS cannot read a response header unless it is exposed,
+        # so without this the frontend sees the 429 but not how long to wait.
+        expose_headers=[
+            "RateLimit-Limit",
+            "RateLimit-Remaining",
+            "RateLimit-Reset",
+            "RateLimit-Policy",
+            "Retry-After",
+        ],
+    )
 
     # ── Import models so Alembic can detect them ──────────────────────────────
     from app.models import user, transaction  # noqa: F401

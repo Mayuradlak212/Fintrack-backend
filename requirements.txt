@@ -15,3 +15,6 @@ python-ulid>=2.2.3
 pyotp>=2.9.0
 qrcode[pil]>=7.4.2
 cryptography>=42.0.0
+# Shared rate-limit buckets. Optional — without REDIS_URL the limiter runs
+# per-process and never imports this.
+redis>=5.0.0

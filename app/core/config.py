@@ -58,6 +58,19 @@ class Settings(BaseSettings):
     MFA_MAX_ATTEMPTS: int = 5
     BACKUP_CODE_COUNT: int = 10
 
+    # ── Rate limiting ─────────────────────────────────────────────────────────
+    RATE_LIMIT_ENABLED: bool = True
+    # Optional. Without it, limits are per-process: with N gunicorn workers the
+    # effective limit is up to N times the configured one. Set it in production.
+    REDIS_URL: str = ""
+    # Kept tight on purpose — a slow shared store must never become latency on
+    # every request. On timeout the limiter falls back to per-process limits.
+    RATE_LIMIT_REDIS_TIMEOUT_MS: int = 50
+    # Only trust X-Forwarded-For when actually behind a proxy that rewrites it
+    # (Vercel, nginx). Trusting it on a directly-exposed server lets any caller
+    # pick their own rate-limit bucket.
+    RATE_LIMIT_TRUST_PROXY: bool = True
+
     @field_validator("DATABASE_URL")
     @classmethod
     def validate_db_url(cls, v: str) -> str:
