@@ -26,6 +26,10 @@ Without `REDIS_URL` the limiter runs on L1 only, which means with N gunicorn
 workers the effective limit is up to N times the configured one. That is fine
 in development; set `REDIS_URL` in production.
 
+For a highly available L2 — Sentinel-managed primary/replica, so a
+failover does not silently drop the limiter back to per-process buckets —
+set `REDIS_SENTINELS` instead. See [REDIS_HA.md](REDIS_HA.md).
+
 Check-and-debit on L2 runs as a Lua script so it is atomic. Doing it as
 GET / compute / SET from the client leaks quota — two workers read the same
 token count and both decide they can afford the request.

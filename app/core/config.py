@@ -71,6 +71,46 @@ class Settings(BaseSettings):
     # pick their own rate-limit bucket.
     RATE_LIMIT_TRUST_PROXY: bool = True
 
+    # ── Redis high availability ───────────────────────────────────────────────
+    # Comma-separated sentinel endpoints, e.g.
+    #   "localhost:26379,localhost:26380,localhost:26381".
+    # When set, the app resolves the current primary through Sentinel instead of
+    # pinning REDIS_URL to a fixed host, so a failover does not need a redeploy.
+    # REDIS_URL still works on its own for single-node / managed Redis.
+    REDIS_SENTINELS: str = ""
+    # Must match `sentinel monitor <name>` in sentinel.conf.
+    REDIS_MASTER_NAME: str = "fintrack-primary"
+    REDIS_PASSWORD: str = ""
+    # Sentinels usually carry their own auth, separate from the data nodes.
+    REDIS_SENTINEL_PASSWORD: str = ""
+    REDIS_DB: int = 0
+    # Data-node socket timeout. Same reasoning as the limiter's: a slow Redis
+    # must not become latency on every request.
+    REDIS_SOCKET_TIMEOUT_MS: int = 200
+    # Sentinel lookups are off the hot path (only on connect / after failover),
+    # so they can afford to be more patient than a data call.
+    REDIS_SENTINEL_TIMEOUT_MS: int = 500
+
+    # ── Replication safety ────────────────────────────────────────────────────
+    # How many replicas must acknowledge a *critical* write before the app
+    # treats it as durable. WAIT blocks for at most REDIS_WAIT_TIMEOUT_MS and
+    # reports how many actually acked; 0 disables the check.
+    # This is a safety net, not a transaction: WAIT reduces the window in which
+    # an acknowledged write is lost to a failover, it does not close it.
+    REDIS_WAIT_REPLICAS: int = 1
+    REDIS_WAIT_TIMEOUT_MS: int = 200
+    # When fewer than REDIS_WAIT_REPLICAS acked, raise instead of returning
+    # quietly. Off by default so existing call sites keep their behaviour;
+    # critical_write() callers opt in per call.
+    REDIS_WAIT_RAISE_ON_SHORTFALL: bool = False
+
+    # ── Redis health reporting ────────────────────────────────────────────────
+    REDIS_HEALTH_TIMEOUT_MS: int = 1000
+    # Replica lag above this many seconds is reported as degraded. Mirror the
+    # primary's `min-replicas-max-lag` so the health endpoint warns before the
+    # primary starts rejecting writes.
+    REDIS_MAX_REPLICA_LAG_SECONDS: int = 10
+
     @field_validator("DATABASE_URL")
     @classmethod
     def validate_db_url(cls, v: str) -> str:
@@ -89,6 +129,31 @@ class Settings(BaseSettings):
     @property
     def refresh_token_expires(self) -> timedelta:
         return timedelta(days=self.JWT_REFRESH_TOKEN_EXPIRES_DAYS)
+
+    @property
+    def sentinel_endpoints(self) -> List[tuple]:
+        """[(host, port), ...] parsed from REDIS_SENTINELS. Empty when unset."""
+        endpoints: List[tuple] = []
+        for raw in self.REDIS_SENTINELS.split(","):
+            entry = raw.strip()
+            if not entry:
+                continue
+            host, _, port = entry.rpartition(":")
+            if not host:
+                raise ValueError(
+                    f"REDIS_SENTINELS entry {entry!r} must be in host:port form"
+                )
+            endpoints.append((host.strip(), int(port)))
+        return endpoints
+
+    @property
+    def redis_ha_enabled(self) -> bool:
+        """True when Sentinel is configured — i.e. failover is handled for us."""
+        return bool(self.sentinel_endpoints)
+
+    @property
+    def redis_configured(self) -> bool:
+        return bool(self.REDIS_URL) or self.redis_ha_enabled
 
 
 # Singleton — import this everywhere

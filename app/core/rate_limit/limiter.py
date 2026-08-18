@@ -42,17 +42,31 @@ class RateLimiter:
     def init_app(self, app: Flask) -> None:
         from app.core.config import settings
 
+        from app.core.redis_ha import get_redis_ha
+
         self.enabled = settings.RATE_LIMIT_ENABLED
         self.trust_proxy = settings.RATE_LIMIT_TRUST_PROXY
+
+        # When Sentinel is configured the limiter shares the app's HA handle, so
+        # a promotion is followed automatically instead of pinning the buckets
+        # to a host that is no longer the primary.
+        ha = get_redis_ha() if settings.redis_ha_enabled else None
         self.shared = build_store(
             settings.REDIS_URL or None,
             timeout_seconds=settings.RATE_LIMIT_REDIS_TIMEOUT_MS / 1000.0,
+            ha=ha,
         )
 
-        if self.enabled and self.shared is None and settings.REDIS_URL:
+        if self.enabled and self.shared is None and settings.redis_configured:
             log.warning(
-                "REDIS_URL is set but the shared rate-limit store could not be "
-                "created; falling back to per-process limits."
+                "Redis is configured but the shared rate-limit store could not "
+                "be created; falling back to per-process limits."
+            )
+        elif self.enabled and ha is not None:
+            log.info(
+                "Rate limiter using Sentinel-managed Redis (master=%s, sentinels=%d)",
+                settings.REDIS_MASTER_NAME,
+                len(settings.sentinel_endpoints),
             )
 
         app.extensions["rate_limiter"] = self

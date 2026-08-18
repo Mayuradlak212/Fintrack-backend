@@ -1,0 +1,199 @@
+# Local Redis HA: 1 primary, 2 replicas, 3 sentinels.
+#
+#   docker compose -f docker/redis-ha/docker-compose.yml up -d
+#
+# Every node listens on a DIFFERENT port, and each container publishes that same
+# port number to the host. That is deliberate. Sentinel hands clients the
+# address of whichever node is currently primary, so if two nodes both used 6379
+# internally and were remapped to different host ports, a client on the host
+# would be told to connect to "redis-replica-1:6379" - a port that is only
+# correct inside the Docker network. Keeping the port identical inside and out
+# means one hosts-file line is enough for host-side testing:
+#
+#   127.0.0.1  redis-primary redis-replica-1 redis-replica-2
+#   127.0.0.1  sentinel-1 sentinel-2 sentinel-3
+#
+# See REDIS_HA.md for the failover drills.
+
+name: fintrack-redis-ha
+
+x-redis-common: &redis-common
+  image: redis:7.2-alpine
+  restart: unless-stopped
+  networks: [redis-ha]
+  volumes:
+    - ./redis.conf:/etc/redis/redis.conf:ro
+
+x-sentinel-common: &sentinel-common
+  image: redis:7.2-alpine
+  restart: unless-stopped
+  networks: [redis-ha]
+  volumes:
+    - ./sentinel.conf.template:/etc/redis/sentinel.conf.template:ro
+    - ./sentinel-entrypoint.sh:/usr/local/bin/sentinel-entrypoint.sh:ro
+  # Invoked through `sh` rather than relying on the execute bit, which does not
+  # survive a checkout on Windows.
+  entrypoint: ["sh", "/usr/local/bin/sentinel-entrypoint.sh"]
+  depends_on:
+    redis-primary:
+      condition: service_healthy
+
+services:
+  redis-primary:
+    <<: *redis-common
+    container_name: redis-primary
+    hostname: redis-primary
+    command:
+      - redis-server
+      - /etc/redis/redis.conf
+      - --port
+      - "6379"
+      # Announced to replicas and sentinels; without it they record a container
+      # IP that changes on restart.
+      - --replica-announce-ip
+      - redis-primary
+      - --replica-announce-port
+      - "6379"
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis.conf:/etc/redis/redis.conf:ro
+      - primary-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  redis-replica-1:
+    <<: *redis-common
+    container_name: redis-replica-1
+    hostname: redis-replica-1
+    command:
+      - redis-server
+      - /etc/redis/redis.conf
+      - --port
+      - "6380"
+      - --replicaof
+      - redis-primary
+      - "6379"
+      - --replica-announce-ip
+      - redis-replica-1
+      - --replica-announce-port
+      - "6380"
+    ports:
+      - "6380:6380"
+    volumes:
+      - ./redis.conf:/etc/redis/redis.conf:ro
+      - replica1-data:/data
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6380", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  redis-replica-2:
+    <<: *redis-common
+    container_name: redis-replica-2
+    hostname: redis-replica-2
+    command:
+      - redis-server
+      - /etc/redis/redis.conf
+      - --port
+      - "6381"
+      - --replicaof
+      - redis-primary
+      - "6379"
+      - --replica-announce-ip
+      - redis-replica-2
+      - --replica-announce-port
+      - "6381"
+    ports:
+      - "6381:6381"
+    volumes:
+      - ./redis.conf:/etc/redis/redis.conf:ro
+      - replica2-data:/data
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6381", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  # Three sentinels, not two: a failover needs a majority (2 of 3) to elect the
+  # sentinel that will carry it out. With two sentinels the majority is also 2,
+  # so losing either one leaves the survivor unable to fail anything over -
+  # which defeats the point of running them.
+  sentinel-1:
+    <<: *sentinel-common
+    container_name: sentinel-1
+    hostname: sentinel-1
+    environment:
+      SENTINEL_PORT: "26379"
+      SENTINEL_ANNOUNCE_IP: sentinel-1
+    ports:
+      - "26379:26379"
+    volumes:
+      - ./sentinel.conf.template:/etc/redis/sentinel.conf.template:ro
+      - ./sentinel-entrypoint.sh:/usr/local/bin/sentinel-entrypoint.sh:ro
+      - sentinel1-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  sentinel-2:
+    <<: *sentinel-common
+    container_name: sentinel-2
+    hostname: sentinel-2
+    environment:
+      SENTINEL_PORT: "26380"
+      SENTINEL_ANNOUNCE_IP: sentinel-2
+    ports:
+      - "26380:26380"
+    volumes:
+      - ./sentinel.conf.template:/etc/redis/sentinel.conf.template:ro
+      - ./sentinel-entrypoint.sh:/usr/local/bin/sentinel-entrypoint.sh:ro
+      - sentinel2-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26380", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  sentinel-3:
+    <<: *sentinel-common
+    container_name: sentinel-3
+    hostname: sentinel-3
+    environment:
+      SENTINEL_PORT: "26381"
+      SENTINEL_ANNOUNCE_IP: sentinel-3
+    ports:
+      - "26381:26381"
+    volumes:
+      - ./sentinel.conf.template:/etc/redis/sentinel.conf.template:ro
+      - ./sentinel-entrypoint.sh:/usr/local/bin/sentinel-entrypoint.sh:ro
+      - sentinel3-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26381", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+networks:
+  redis-ha:
+    driver: bridge
+
+volumes:
+  primary-data:
+  replica1-data:
+  replica2-data:
+  sentinel1-data:
+  sentinel2-data:
+  sentinel3-data:

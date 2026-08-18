@@ -25,6 +25,7 @@ def create_app() -> "Flask":  # noqa: F821
     migrate.init_app(app, db)
     JWTManager(app)
     limiter.init_app(app)
+    _log_redis_topology()
     CORS(
         app,
         origins=settings.cors_origins_list,
@@ -45,10 +46,14 @@ def create_app() -> "Flask":  # noqa: F821
 
     # ── Blueprints ────────────────────────────────────────────────────────────
     from app.api.auth import auth_bp
+    from app.api.health import health_bp
     from app.api.transactions import transactions_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(transactions_bp, url_prefix="/api/transactions")
+    # Adds /api/health/redis and /api/health/redis/ready alongside the plain
+    # /api/health liveness probe below, which is left exactly as it was.
+    app.register_blueprint(health_bp, url_prefix="/api/health")
 
     # ── Health check ──────────────────────────────────────────────────────────
     @app.get("/")
@@ -64,3 +69,36 @@ def create_app() -> "Flask":  # noqa: F821
         return {"status": "ok", "env": settings.FLASK_ENV}
 
     return app
+
+
+def _log_redis_topology() -> None:
+    """
+    One line at boot naming the Redis mode in effect.
+
+    Worth the startup cost: "why did this instance lose its shared rate limits"
+    is otherwise answered by guessing, and the answer is nearly always that
+    Sentinel was not configured on that deploy.
+    """
+    import logging
+
+    from app.core.redis_ha import get_redis_ha
+
+    log = logging.getLogger(__name__)
+    ha = get_redis_ha()
+
+    if ha is None:
+        log.info("Redis not configured - rate limits are per-process only")
+        return
+
+    if ha.mode == "sentinel":
+        log.info(
+            "Redis HA: sentinel mode, master=%s, sentinels=%s, primary=%s",
+            ha.master_name,
+            [f"{h}:{p}" for h, p in ha.sentinel_endpoints],
+            ha.primary_address(),
+        )
+    else:
+        log.info(
+            "Redis HA: direct mode (no Sentinel) - failover is whatever the "
+            "endpoint provides"
+        )

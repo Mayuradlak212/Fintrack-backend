@@ -168,8 +168,15 @@ class RedisStore:
     """
     Shared buckets across every worker and instance in a region.
 
-    Wraps Redis in a small circuit breaker: once the shared store starts
-    failing, every request paying a 5 ms timeout to rediscover that is a
+    Two ways in, chosen by configuration:
+
+    * a Sentinel-managed handle (`ha`), which re-resolves the primary after a
+      failover so limits stay shared instead of silently degrading to
+      per-process the moment a node is promoted;
+    * a plain URL, for a single node or a managed Redis.
+
+    Either way the store is wrapped in a small circuit breaker: once the shared
+    store starts failing, every request paying a timeout to rediscover that is a
     self-inflicted latency regression. After a few consecutive failures we stop
     calling it for a cool-off period and let the caller fall back.
     """
@@ -177,22 +184,38 @@ class RedisStore:
     _FAILURE_THRESHOLD = 5
     _COOLOFF_SECONDS = 5.0
 
-    def __init__(self, url: str, timeout_seconds: float = 0.05, prefix: str = "rl") -> None:
+    def __init__(
+        self,
+        url: str = "",
+        timeout_seconds: float = 0.05,
+        prefix: str = "rl",
+        ha=None,
+    ) -> None:
         try:
-            import redis  # noqa: PLC0415 — optional dependency, imported on demand
+            import redis  # noqa: PLC0415 - optional dependency, imported on demand
         except ImportError as e:  # pragma: no cover - depends on install extras
             raise StoreUnavailable(
-                "REDIS_URL is set but the 'redis' package is not installed"
+                "Redis is configured but the 'redis' package is not installed"
             ) from e
 
         self._prefix = prefix
-        self._client = redis.Redis.from_url(
-            url,
-            socket_timeout=timeout_seconds,
-            socket_connect_timeout=timeout_seconds,
-            retry_on_timeout=False,
-            decode_responses=True,
-        )
+        self._ha = ha
+        if ha is not None:
+            self._client = ha.primary
+        elif url:
+            self._client = redis.Redis.from_url(
+                url,
+                socket_timeout=timeout_seconds,
+                socket_connect_timeout=timeout_seconds,
+                retry_on_timeout=False,
+                decode_responses=True,
+            )
+        else:
+            raise StoreUnavailable("no Redis URL or Sentinel configuration given")
+
+        # Registering against one client is fine even under failover: redis-py
+        # falls back from EVALSHA to EVAL when the script is unknown to the node
+        # it is talking to, so a freshly promoted primary self-heals.
         self._script = self._client.register_script(_LUA_TOKEN_BUCKET)
         self._failures = 0
         self._open_until = 0.0
@@ -213,11 +236,18 @@ class RedisStore:
         if self.circuit_open:
             raise StoreUnavailable("Redis circuit breaker is open")
 
+        keys = [f"{self._prefix}:{key}"]
+        args = [time.time(), capacity, refill_per_sec, cost, ttl_seconds]
+
         try:
-            allowed, tokens, reset_ms = self._script(
-                keys=[f"{self._prefix}:{key}"],
-                args=[time.time(), capacity, refill_per_sec, cost, ttl_seconds],
-            )
+            if self._ha is not None:
+                # execute() retries through a promotion, so a failover costs a
+                # little latency rather than a lost bucket.
+                allowed, tokens, reset_ms = self._ha.execute(
+                    lambda client: self._script(keys=keys, args=args, client=client)
+                )
+            else:
+                allowed, tokens, reset_ms = self._script(keys=keys, args=args)
         except Exception as e:  # redis.RedisError, socket errors, script errors
             self._record_failure()
             raise StoreUnavailable(str(e)) from e
@@ -242,11 +272,21 @@ class RedisStore:
                 self._failures = 0
 
 
-def build_store(redis_url: Optional[str], timeout_seconds: float) -> Optional[Store]:
-    """Returns a shared store when one is configured and importable, else None."""
-    if not redis_url:
+def build_store(
+    redis_url: Optional[str],
+    timeout_seconds: float,
+    ha=None,
+) -> Optional[Store]:
+    """
+    Returns a shared store when one is configured and importable, else None.
+
+    Prefers the Sentinel-managed handle when the app has one: limits should keep
+    being shared across the fleet after a failover, not quietly fall back to
+    per-process buckets because the old primary's address stopped answering.
+    """
+    if ha is None and not redis_url:
         return None
     try:
-        return RedisStore(redis_url, timeout_seconds=timeout_seconds)
+        return RedisStore(redis_url or "", timeout_seconds=timeout_seconds, ha=ha)
     except StoreUnavailable:
         return None

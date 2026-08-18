@@ -1,0 +1,51 @@
+# Sentinel template. The entrypoint copies this to a writable path and appends
+# the per-node port and announced address - Sentinel rewrites its own config
+# file at runtime (it records the current primary, discovered replicas, and peer
+# sentinels there), so it cannot run from a read-only mount.
+
+dir /data
+protected-mode no
+
+# Docker gives containers ephemeral IPs. Without these two, Sentinel would
+# record raw IPs that change on every restart and hand them to clients.
+sentinel resolve-hostnames yes
+sentinel announce-hostnames yes
+
+# ── The monitored primary ────────────────────────────────────────────────────
+# Format: sentinel monitor <name> <host> <port> <quorum>
+#
+# QUORUM = 2, with 3 sentinels. Two separate thresholds are at play and both
+# have to hold for a failover to happen:
+#
+#   * quorum (2) - how many sentinels must independently agree the primary is
+#     down before a failover is even proposed.
+#   * majority (2 of 3) - how many must then vote to authorise one sentinel as
+#     leader to carry it out. This one is not configurable; it is always
+#     floor(N/2)+1.
+#
+# Setting quorum to 2 makes both thresholds the same, which is what you want:
+# it tolerates exactly one sentinel failure. Setting it to 1 would let a single
+# sentinel with a bad network path declare a healthy primary dead. Setting it
+# to 3 would mean any one sentinel going down freezes failover entirely - the
+# cluster would keep running until the moment it actually needed to fail over,
+# and then not.
+#
+# The primary must be named `fintrack-primary` here and in REDIS_MASTER_NAME.
+sentinel monitor fintrack-primary redis-primary 6379 2
+
+# How long the primary must be unreachable before this sentinel calls it down.
+# Short enough that a real failure is caught quickly, long enough to ride out a
+# GC pause or a slow disk flush.
+sentinel down-after-milliseconds fintrack-primary 5000
+
+# Abort and retry a failover that stalls past this. Must comfortably exceed
+# down-after-milliseconds.
+sentinel failover-timeout fintrack-primary 15000
+
+# Replicas resynced against the new primary at a time. 1 keeps at least one
+# replica able to serve reads throughout the failover, at the cost of the other
+# taking longer to catch up.
+sentinel parallel-syncs fintrack-primary 1
+
+# Uncomment alongside `requirepass` on the data nodes.
+# sentinel auth-pass fintrack-primary <password>
